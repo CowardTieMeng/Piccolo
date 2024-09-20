@@ -49,6 +49,7 @@ namespace Piccolo
         }
     }
 
+    // 创建渲染目标及其View, 大小、格式、用途、访问模式等, 塞到attachment里面
     void MainCameraPass::setupAttachments()
     {
         m_framebuffer.attachments.resize(_main_camera_pass_custom_attachment_count +
@@ -132,10 +133,13 @@ namespace Piccolo
         }
     }
 
+    // 给attachment创建描述符
+    // 看的出来深度图、模板测试图都是可以通过API创建的, 而不是在GPU的固定图片
     void MainCameraPass::setupRenderPass()
     {
         RHIAttachmentDescription attachments[_main_camera_pass_attachment_count] = {};
 
+        // gbuffer_normal - gbuffer_a
         RHIAttachmentDescription& gbuffer_normal_attachment_description = attachments[_main_camera_pass_gbuffer_a];
         gbuffer_normal_attachment_description.format  = m_framebuffer.attachments[_main_camera_pass_gbuffer_a].format;
         gbuffer_normal_attachment_description.samples = RHI_SAMPLE_COUNT_1_BIT;
@@ -146,6 +150,7 @@ namespace Piccolo
         gbuffer_normal_attachment_description.initialLayout  = RHI_IMAGE_LAYOUT_UNDEFINED;
         gbuffer_normal_attachment_description.finalLayout    = RHI_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
+        // gbuffer_metallic - gbuffer_b
         RHIAttachmentDescription& gbuffer_metallic_roughness_shadingmodeid_attachment_description =
             attachments[_main_camera_pass_gbuffer_b];
         gbuffer_metallic_roughness_shadingmodeid_attachment_description.format =
@@ -160,6 +165,7 @@ namespace Piccolo
         gbuffer_metallic_roughness_shadingmodeid_attachment_description.finalLayout =
             RHI_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
+        // gbuffer_albedo - gbuffer_c
         RHIAttachmentDescription& gbuffer_albedo_attachment_description = attachments[_main_camera_pass_gbuffer_c];
         gbuffer_albedo_attachment_description.format  = m_framebuffer.attachments[_main_camera_pass_gbuffer_c].format;
         gbuffer_albedo_attachment_description.samples = RHI_SAMPLE_COUNT_1_BIT;
@@ -218,6 +224,7 @@ namespace Piccolo
         post_process_even_color_attachment_description.initialLayout  = RHI_IMAGE_LAYOUT_UNDEFINED;
         post_process_even_color_attachment_description.finalLayout    = RHI_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
+        // depth
         RHIAttachmentDescription& depth_attachment_description = attachments[_main_camera_pass_depth];
         depth_attachment_description.format                   = m_rhi->getDepthImageInfo().depth_image_format;
         depth_attachment_description.samples                  = RHI_SAMPLE_COUNT_1_BIT;
@@ -228,6 +235,7 @@ namespace Piccolo
         depth_attachment_description.initialLayout            = RHI_IMAGE_LAYOUT_UNDEFINED;
         depth_attachment_description.finalLayout              = RHI_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 
+        // swapchain
         RHIAttachmentDescription& swapchain_image_attachment_description =
             attachments[_main_camera_pass_swap_chain_image];
         swapchain_image_attachment_description.format         = m_rhi->getSwapchainInfo().image_format;
@@ -239,8 +247,10 @@ namespace Piccolo
         swapchain_image_attachment_description.initialLayout  = RHI_IMAGE_LAYOUT_UNDEFINED;
         swapchain_image_attachment_description.finalLayout    = RHI_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 
+        // 8个subpass的描述符
         RHISubpassDescription subpasses[_main_camera_subpass_count] = {};
 
+        // why? 为什么创建subpass描述符还要用到这个类
         RHIAttachmentReference base_pass_color_attachments_reference[3] = {};
         base_pass_color_attachments_reference[0].attachment = &gbuffer_normal_attachment_description - attachments;
         base_pass_color_attachments_reference[0].layout     = RHI_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
@@ -254,6 +264,7 @@ namespace Piccolo
         base_pass_depth_attachment_reference.attachment = &depth_attachment_description - attachments;
         base_pass_depth_attachment_reference.layout     = RHI_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 
+        // pipelineBindPoint, 要绑定到哪个类型的管线-Graphic/Compute/RayTracing等
         RHISubpassDescription& base_pass = subpasses[_main_camera_subpass_basepass];
         base_pass.pipelineBindPoint     = RHI_PIPELINE_BIND_POINT_GRAPHICS;
         base_pass.colorAttachmentCount =
