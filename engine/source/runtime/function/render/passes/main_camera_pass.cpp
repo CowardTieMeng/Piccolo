@@ -292,6 +292,10 @@ namespace Piccolo
             &backup_odd_color_attachment_description - attachments;
         deferred_lighting_pass_color_attachment_reference[0].layout = RHI_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
+        // base_pass和deferred_lighting_pass是共用相同的attachments, 是否说明它们就是后者用了前者的渲染结果, 好像是的
+        // base_pass中是作为pColorAttachments
+        // deferred_lighting_pass中是作为pInputAttachments
+        // ToDo: 问问AI是否是这么回事
         RHISubpassDescription& deferred_lighting_pass = subpasses[_main_camera_subpass_deferred_lighting];
         deferred_lighting_pass.pipelineBindPoint     = RHI_PIPELINE_BIND_POINT_GRAPHICS;
         deferred_lighting_pass.inputAttachmentCount  = sizeof(deferred_lighting_pass_input_attachments_reference) /
@@ -437,6 +441,7 @@ namespace Piccolo
         combine_ui_pass.preserveAttachmentCount = 0;
         combine_ui_pass.pPreserveAttachments    = NULL;
 
+        // 在这儿设置的subpass前后依赖, 那可能多Pass之间的RT依赖也是在这进行的
         RHISubpassDependency dependencies[8] = {};
 
         RHISubpassDependency& deferred_lighting_pass_depend_on_shadow_map_pass = dependencies[0];
