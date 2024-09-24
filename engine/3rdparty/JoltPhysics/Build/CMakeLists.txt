@@ -169,6 +169,8 @@ set(CMAKE_EXE_LINKER_FLAGS_DISTRIBUTION "${CMAKE_EXE_LINKER_FLAGS_RELEASE}")
 # Set repository root
 set(PHYSICS_REPO_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../)
 
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /WX-")  # 禁用将警告视为错误
+
 # Make Jolt Library
 include(${PHYSICS_REPO_ROOT}/Jolt/Jolt.cmake)
 if (IOS)
