@@ -137,6 +137,7 @@ namespace Piccolo
     // 看的出来深度图、模板测试图都是可以通过API创建的, 而不是在GPU的固定图片
     void MainCameraPass::setupRenderPass()
     {
+        // 创建AttachmentDesc
         RHIAttachmentDescription attachments[_main_camera_pass_attachment_count] = {};
 
         // gbuffer_normal - gbuffer_a
@@ -247,10 +248,10 @@ namespace Piccolo
         swapchain_image_attachment_description.initialLayout  = RHI_IMAGE_LAYOUT_UNDEFINED;
         swapchain_image_attachment_description.finalLayout    = RHI_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 
-        // 8个subpass的描述符
+        // 8个subpass的Desc
         RHISubpassDescription subpasses[_main_camera_subpass_count] = {};
 
-        // why? 为什么创建subpass描述符还要用到这个类
+        // 创建附件引用, 告诉Subpass如何使用对应的附件
         RHIAttachmentReference base_pass_color_attachments_reference[3] = {};
         base_pass_color_attachments_reference[0].attachment = &gbuffer_normal_attachment_description - attachments;
         base_pass_color_attachments_reference[0].layout     = RHI_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
@@ -267,12 +268,12 @@ namespace Piccolo
         // pipelineBindPoint, 要绑定到哪个类型的管线-Graphic/Compute/RayTracing等
         RHISubpassDescription& base_pass = subpasses[_main_camera_subpass_basepass];
         base_pass.pipelineBindPoint     = RHI_PIPELINE_BIND_POINT_GRAPHICS;
-        base_pass.colorAttachmentCount =
+        base_pass.colorAttachmentCount =                                                                        // 指定子通道中颜色附件的数量
             sizeof(base_pass_color_attachments_reference) / sizeof(base_pass_color_attachments_reference[0]);
-        base_pass.pColorAttachments       = &base_pass_color_attachments_reference[0];
-        base_pass.pDepthStencilAttachment = &base_pass_depth_attachment_reference;
-        base_pass.preserveAttachmentCount = 0;
-        base_pass.pPreserveAttachments    = NULL;
+        base_pass.pColorAttachments       = &base_pass_color_attachments_reference[0];                          // 指向一个附件引用数组，用于指定子通道中作为颜色输出使用的附件，这些附件将接收渲染管线的输出颜色数据
+        base_pass.pDepthStencilAttachment = &base_pass_depth_attachment_reference;                              // 指向一个附件引用，该引用指定子通道中使用的深度/模板附件(把深度、模板写到该附件上)
+        base_pass.preserveAttachmentCount = 0;                                                                  // 指定子通道中需要保留的附件数量。这些附件在子通道中不会被修改，但其内容需要在子通道结束后保留
+        base_pass.pPreserveAttachments    = NULL;                                                               // 指向一个数组，该数组包含需要保留的附件的索引
 
         RHIAttachmentReference deferred_lighting_pass_input_attachments_reference[4] = {};
         deferred_lighting_pass_input_attachments_reference[0].attachment =
@@ -292,15 +293,17 @@ namespace Piccolo
             &backup_odd_color_attachment_description - attachments;
         deferred_lighting_pass_color_attachment_reference[0].layout = RHI_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
-        // base_pass和deferred_lighting_pass是共用相同的attachments, 是否说明它们就是后者用了前者的渲染结果, 好像是的
+        // base_pass和deferred_lighting_pass是共用相同的attachments, 是否说明它们就是后者用了前者的渲染结果, 确实是的!
         // base_pass中是作为pColorAttachments
         // deferred_lighting_pass中是作为pInputAttachments
-        // ToDo: 问问AI是否是这么回事
+        // 并且base_pass_depth_attachment_reference(深度附件)在deferred_lighting_pass中也是作为input附件,
+        // 在base_pass中被绑定到了base_pass.pDepthStencilAttachment, 接收渲染管线的深度和模板测试结果
+        // ToDo: attachment实际是被创建的还是说就只要把desc绑定到管线就行了?看起来是后者
         RHISubpassDescription& deferred_lighting_pass = subpasses[_main_camera_subpass_deferred_lighting];
         deferred_lighting_pass.pipelineBindPoint     = RHI_PIPELINE_BIND_POINT_GRAPHICS;
         deferred_lighting_pass.inputAttachmentCount  = sizeof(deferred_lighting_pass_input_attachments_reference) /
                                                       sizeof(deferred_lighting_pass_input_attachments_reference[0]);
-        deferred_lighting_pass.pInputAttachments    = &deferred_lighting_pass_input_attachments_reference[0];
+        deferred_lighting_pass.pInputAttachments    = &deferred_lighting_pass_input_attachments_reference[0];               // 用于指定子通道中作为输入使用的附件，这些附件的内容可以在着色器中读取
         deferred_lighting_pass.colorAttachmentCount = sizeof(deferred_lighting_pass_color_attachment_reference) /
                                                       sizeof(deferred_lighting_pass_color_attachment_reference[0]);
         deferred_lighting_pass.pColorAttachments       = &deferred_lighting_pass_color_attachment_reference[0];
