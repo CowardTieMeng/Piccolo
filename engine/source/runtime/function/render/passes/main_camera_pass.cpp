@@ -444,7 +444,8 @@ namespace Piccolo
         combine_ui_pass.preserveAttachmentCount = 0;
         combine_ui_pass.pPreserveAttachments    = NULL;
 
-        // 在这儿设置的subpass前后依赖, 那可能多Pass之间的RT依赖也是在这进行的
+        // 在这儿设置的subpass前后依赖,
+        // 多Pass之间的RT依赖是在RHISubpassDescription的pColorAttachment、pInputAttachment、pDepthStencilAttachment中设置的
         RHISubpassDependency dependencies[8] = {};
 
         RHISubpassDependency& deferred_lighting_pass_depend_on_shadow_map_pass = dependencies[0];
