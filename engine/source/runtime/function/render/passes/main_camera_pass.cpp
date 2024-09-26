@@ -445,7 +445,7 @@ namespace Piccolo
         combine_ui_pass.pPreserveAttachments    = NULL;
 
         // 在这儿设置的subpass前后依赖,
-        // 多Pass之间的RT依赖是在RHISubpassDescription的pColorAttachment、pInputAttachment、pDepthStencilAttachment中设置的
+        // 多Pass之间的RT依赖是在RHISubpassDescription的pColorAttachments、pInputAttachments、pDepthStencilAttachment中设置的
         RHISubpassDependency dependencies[8] = {};
 
         RHISubpassDependency& deferred_lighting_pass_depend_on_shadow_map_pass = dependencies[0];
@@ -586,6 +586,12 @@ namespace Piccolo
         }
 
         {
+            // 定义描述符集布局中的一个绑定点, 通常对应一个Image, Buffer...
+            // binding: 指定描述符在着色器中的位置, 类似DX12中的slot, 着色器可以通过这个绑定点来访问相应的资源
+            // descriptorType: 定义绑定点所引用的资源类型
+            // descriptorCount: 指定绑定点所引用的描述符的数量(可以是数组, 这样在Shader中访问到时候也是一个数组)
+            // stageFlags: 指定哪些着色器阶段可以访问描述符集(vertex, fragment)
+            // pImmutableSamplers: 用于指定一个指向不可变采样器数组的指针, 不可变采样器是指在描述符集布局创建时就已经固定的采样器，不能在运行时更改。这样可以减少运行时的开销
             RHIDescriptorSetLayoutBinding mesh_global_layout_bindings[8];
 
             RHIDescriptorSetLayoutBinding& mesh_global_layout_perframe_storage_buffer_binding =
@@ -643,6 +649,12 @@ namespace Piccolo
             mesh_global_layout_directional_light_shadow_texture_binding = mesh_global_layout_brdfLUT_texture_binding;
             mesh_global_layout_directional_light_shadow_texture_binding.binding = 7;
 
+            // 描述如何创建描述符集布局（Descriptor Set Layout）的信息, 通过它去创建一个DescriptorSetLayout
+            // sType: 结构体类型
+            // pNext: 指向扩展信息的指针
+            // flags: 创建标志
+            // bindingCount: 绑定点的数量
+            // pBinding: 指向DescriptorSetLayoutBinding数组的指针
             RHIDescriptorSetLayoutCreateInfo mesh_global_layout_create_info;
             mesh_global_layout_create_info.sType = RHI_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
             mesh_global_layout_create_info.pNext = NULL;
@@ -820,6 +832,7 @@ namespace Piccolo
         }
     }
 
+    // 配置并创建硬件管线
     void MainCameraPass::setupPipelines()
     {
         m_render_pipelines.resize(_render_pipeline_type_count);
@@ -829,6 +842,10 @@ namespace Piccolo
             RHIDescriptorSetLayout*      descriptorset_layouts[3] = {m_descriptor_infos[_mesh_global].layout,
                                                               m_descriptor_infos[_per_mesh].layout,
                                                               m_descriptor_infos[_mesh_per_material].layout};
+
+            // 用于描述创建管线布局（Pipeline Layout）的信息
+            // 管线布局定义了着色器阶段如何访问资源（如描述符集和推送常量）
+            // DescriptorSetLayoutBinding(multi)->DescriptorSetLayout(multi)->PipelineLayout
             RHIPipelineLayoutCreateInfo pipeline_layout_create_info {};
             pipeline_layout_create_info.sType          = RHI_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
             pipeline_layout_create_info.setLayoutCount = 3;
@@ -951,6 +968,7 @@ namespace Piccolo
             dynamic_state_create_info.dynamicStateCount = 2;
             dynamic_state_create_info.pDynamicStates    = dynamic_states;
 
+            // 用于创建Pipeline的info结构体
             RHIGraphicsPipelineCreateInfo pipelineInfo {};
             pipelineInfo.sType               = RHI_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
             pipelineInfo.stageCount          = 2;
@@ -1544,6 +1562,10 @@ namespace Piccolo
 
     void MainCameraPass::setupModelGlobalDescriptorSet()
     {
+        // 用于描述如何分配(创建)描述符集
+        // descriptorPool: 描述符池(从哪里分配描述符集)
+        // descriptorSetCount: 描述符集数量
+        // pSetLayouts: 之前在上面配置好的layout(RHIDescriptorSetLayoutCreateInfo)
         // update common model's global descriptor set
         RHIDescriptorSetAllocateInfo mesh_global_descriptor_set_alloc_info;
         mesh_global_descriptor_set_alloc_info.sType              = RHI_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
@@ -1552,6 +1574,7 @@ namespace Piccolo
         mesh_global_descriptor_set_alloc_info.descriptorSetCount = 1;
         mesh_global_descriptor_set_alloc_info.pSetLayouts        = &m_descriptor_infos[_mesh_global].layout;
 
+        // 创建描述符集
         if (RHI_SUCCESS != m_rhi->allocateDescriptorSets(&mesh_global_descriptor_set_alloc_info, m_descriptor_infos[_mesh_global].descriptor_set))
         {
             throw std::runtime_error("allocate mesh global descriptor set");
@@ -1611,6 +1634,17 @@ namespace Piccolo
         directional_light_shadow_texture_image_info.imageView = m_directional_light_shadow_color_image_view;
         directional_light_shadow_texture_image_info.imageLayout = RHI_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
+        // 用于描述如何将资源（如缓冲区、图像等）绑定到描述符集上
+        // 一个描述符集可以包含多个描述符, 每个描述符对应一个资源绑定点
+        // 具体数量由RHIDescriptorSetLayoutCreateInfo中的bindingCount参数设置(mesh_global_layout_bindings)
+        // 这里创建了8个, 意味着要绑定8个缓冲区、图像到描述符集上(感觉写的有点繁琐, 为啥不放到一块儿呢)
+        // dstSet: 目标描述符集，即要更新的描述符集
+        // dstArrayElement: 目标数组元素索引
+        // descriptorCount: 要更新的描述符数量
+        // descriptorType: 描述符类型(必须与创建layout时的配置相同)
+        // pImageInfo: 指向图像信息的指针，用于图像描述符（把图像数据作为纹理来访问）
+        // pBufferInfo: 指向缓冲区信息的指针，用于缓冲区描述符
+        // pTexelBufferView: 指向纹理缓冲区视图的指针，用于纹理缓冲区描述符（把缓冲区视为纹理来访问）
         RHIWriteDescriptorSet mesh_descriptor_writes_info[8];
 
         mesh_descriptor_writes_info[0].sType           = RHI_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -1665,6 +1699,7 @@ namespace Piccolo
         mesh_descriptor_writes_info[7].dstBinding = 7;
         mesh_descriptor_writes_info[7].pImageInfo = &directional_light_shadow_texture_image_info;
 
+        // 更新描述符集
         m_rhi->updateDescriptorSets(sizeof(mesh_descriptor_writes_info) / sizeof(mesh_descriptor_writes_info[0]),
                                     mesh_descriptor_writes_info,
                                     0,
@@ -1789,6 +1824,8 @@ namespace Piccolo
 
     void MainCameraPass::setupFramebufferDescriptorSet()
     {
+        // 把ImageView绑定到WriteDescriptorSet上, 再通过WriteDescriptorSet将描述符更新到描述符集
+        // Image->ImageView->DescriptorImageInfo->WriteDescriptorSet->allocateDescriptorSets()创建描述符集->updateDescriptorSets()更新描述符集
         RHIDescriptorImageInfo gbuffer_normal_input_attachment_info = {};
         gbuffer_normal_input_attachment_info.sampler = m_rhi->getOrCreateDefaultSampler(Default_Sampler_Nearest);
         gbuffer_normal_input_attachment_info.imageView   = m_framebuffer.attachments[_main_camera_pass_gbuffer_a].view;
