@@ -293,6 +293,7 @@ namespace Piccolo
             &backup_odd_color_attachment_description - attachments;
         deferred_lighting_pass_color_attachment_reference[0].layout = RHI_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
+        // @多pass输入输出前后关联
         // base_pass和deferred_lighting_pass是共用相同的attachments, 是否说明它们就是后者用了前者的渲染结果, 确实是的!
         // base_pass中是作为pColorAttachments
         // deferred_lighting_pass中是作为pInputAttachments
@@ -586,7 +587,15 @@ namespace Piccolo
         }
 
         {
+            // @绑定资源到Shader
+            // DescriptorSetLayoutBinding
             // 定义描述符集布局中的一个绑定点, 通常对应一个Image, Buffer...
+            // 在shader中会这样子绑定:
+            // layout(set = 0, binding = 2) readonly buffer _unused_name_per_drawcall_vertex_blending
+            // {
+            //     highp mat4 joint_matrices[m_mesh_vertex_blending_max_joint_count * m_mesh_per_drawcall_max_instance_count];
+            // };
+            // -------------------------------------------------------------------------------------
             // binding: 指定描述符在着色器中的位置, 类似DX12中的slot, 着色器可以通过这个绑定点来访问相应的资源
             // descriptorType: 定义绑定点所引用的资源类型
             // descriptorCount: 指定绑定点所引用的描述符的数量(可以是数组, 这样在Shader中访问到时候也是一个数组)
@@ -649,7 +658,17 @@ namespace Piccolo
             mesh_global_layout_directional_light_shadow_texture_binding = mesh_global_layout_brdfLUT_texture_binding;
             mesh_global_layout_directional_light_shadow_texture_binding.binding = 7;
 
-            // 描述如何创建描述符集布局（Descriptor Set Layout）的信息, 通过它去创建一个DescriptorSetLayout
+            // @绑定资源到Pipeline
+            // 描述如何创建描述符集布局(DescriptorSetLayout), 通过它去创建一个DescriptorSetLayout
+            // DescriptorSetLayout之后会在创建PipelineLayout绑定到PipelineLayout
+            // DescriptorSetLayout之后在创建DescriptorSet的时候与DescriptorSet绑定
+            // DescriptorSet在创建时会绑定之前创建的各种ImageView和FrameBufferView
+            // 通过PipelineLayout创建Pipeline, 这样Pipeline就与DescriptorSet建立了绑定关系, 也就与Image和FrameBuffer建立了绑定关系
+            // Pipeline——PipelineLayout(DescriptorSetLayout)——DescriptorSet——Image/FrameBuffer
+            // 这样的设计方便在运行时动态切换资源绑定到管线, 但DescriptorSetLayout一经创建就无法再修改
+            // 所以能修改的只有DescriptorSet以及它所绑定的View, 必须绑定已经绑定到管线的Layout
+            // 通过UpdateDescriptorSets()进行更新
+            // -----------------------------------------------
             // sType: 结构体类型
             // pNext: 指向扩展信息的指针
             // flags: 创建标志
@@ -968,7 +987,30 @@ namespace Piccolo
             dynamic_state_create_info.dynamicStateCount = 2;
             dynamic_state_create_info.pDynamicStates    = dynamic_states;
 
-            // 用于创建Pipeline的info结构体
+            // @Pipeline与Pass的关系, SubPass之间切换
+            // 创建Pipeline, Pipeline的功能是配置管线各个阶段的渲染状态, 包括顶点输入、着色器程序、光栅化状态、深度和模板测试等
+            // 这里的Pipeline只是配置管线的渲染状态, 并把Pass关联到管线, Vulkan会根据Pass的配置多次执行绑定到该通道的管线
+            // SubPass执行时可以切换绑定的管线!!!Pass和Pipeline不是绑死的, 在创建时进行绑定是为了方便驱动进行优化
+            // 也可以说在GPU上的程序执行流是由Pass控制的, 好多东西都是引用关系, 而非树状关系(图状关系更贴切, 大量使用了组合的设计理念), 确实更加灵活
+            // 既然Shader是绑定到Pipeline的, 那Pass和Shader又是怎么绑定的呢?
+            // —— 所有的SubPass都用的相同的Shader, 如果使用不同的管线, 那就能使用不同的Shader了
+            // 多SubPass的功能?
+            // 1. Pass可以有不同的配置, 比如深度测试、混合模式, 得到不同的结果
+            // 2. 在不同的Pass中，可以绑定不同的描述符集, 最终渲染结果可以不同
+            //    vkBeginCommandBuffer(command_buffer, &begin_info); // 开始命令缓冲区记录
+            //    vkCmdBeginRenderPass(command_buffer, &render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE); //开始第一个subpass
+            //    vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &descriptor_set_1, 0, nullptr); // 绑定第一个描述符集
+            //    vkCmdNextSubpass(command_buffer, VK_SUBPASS_CONTENTS_INLINE); // 结束第一个subpass
+            //    vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &descriptor_set_2, 0, nullptr); // 绑定第二个描述符集
+            //    vkCmdEndRenderPass(command_buffer); // 结束渲染通道
+            //    vkEndCommandBuffer(command_buffer); // 结束命令缓冲区记录
+            // 3. 渲染结果可以累积、叠加、逐层处理渲染效果(控制渲染操作的顺序和依赖关系)
+            //    3.1 首先进行颜色输出，然后在另一个 Pass 中进行模糊、光照等处理，最终合成图像
+            // 4. 在每个 Pass 中根据条件或用户输入动态修改状态或资源，这使得每次管线的执行都可以在不同的上下文中进行
+            //    4.1 Shader分支或者#define
+            // ToDo: 看着意义不大, 得看看这里的多SubPass之间的区别.
+
+
             RHIGraphicsPipelineCreateInfo pipelineInfo {};
             pipelineInfo.sType               = RHI_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
             pipelineInfo.stageCount          = 2;
@@ -1562,10 +1604,11 @@ namespace Piccolo
 
     void MainCameraPass::setupModelGlobalDescriptorSet()
     {
+        // @绑定描述符布局到描述符集
         // 用于描述如何分配(创建)描述符集
         // descriptorPool: 描述符池(从哪里分配描述符集)
         // descriptorSetCount: 描述符集数量
-        // pSetLayouts: 之前在上面配置好的layout(RHIDescriptorSetLayoutCreateInfo)
+        // pSetLayouts: 绑定之前在上面配置好的layout(RHIDescriptorSetLayoutCreateInfo)
         // update common model's global descriptor set
         RHIDescriptorSetAllocateInfo mesh_global_descriptor_set_alloc_info;
         mesh_global_descriptor_set_alloc_info.sType              = RHI_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
@@ -1580,6 +1623,7 @@ namespace Piccolo
             throw std::runtime_error("allocate mesh global descriptor set");
         }
 
+        // 可以简单理解为一个Buffer描述符(虽然Vulcan中本身不存在描述符类)
         RHIDescriptorBufferInfo mesh_perframe_storage_buffer_info = {};
         // this offset plus dynamic_offset should not be greater than the size of the buffer
         mesh_perframe_storage_buffer_info.offset = 0;
@@ -1606,6 +1650,8 @@ namespace Piccolo
         assert(mesh_per_drawcall_vertex_blending_storage_buffer_info.range <
                m_global_render_resource->_storage_buffer._max_storage_buffer_range);
 
+        // @绑定资源视图到描述符集
+        // 可以简单理解为一个Image描述符(虽然Vulcan中本身不存在描述符类)
         RHIDescriptorImageInfo brdf_texture_image_info = {};
         brdf_texture_image_info.sampler     = m_global_render_resource->_ibl_resource._brdfLUT_texture_sampler;
         brdf_texture_image_info.imageView   = m_global_render_resource->_ibl_resource._brdfLUT_texture_image_view;
@@ -1634,7 +1680,8 @@ namespace Piccolo
         directional_light_shadow_texture_image_info.imageView = m_directional_light_shadow_color_image_view;
         directional_light_shadow_texture_image_info.imageLayout = RHI_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
-        // 用于描述如何将资源（如缓冲区、图像等）绑定到描述符集上
+        // @创建用于更新描述符集的结构
+        // 或者简单理解: 为描述符集设置一堆描述符, 并更新到渲染设备上
         // 一个描述符集可以包含多个描述符, 每个描述符对应一个资源绑定点
         // 具体数量由RHIDescriptorSetLayoutCreateInfo中的bindingCount参数设置(mesh_global_layout_bindings)
         // 这里创建了8个, 意味着要绑定8个缓冲区、图像到描述符集上(感觉写的有点繁琐, 为啥不放到一块儿呢)
