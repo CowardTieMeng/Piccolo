@@ -1767,6 +1767,9 @@ namespace Piccolo
             throw std::runtime_error("allocate skybox descriptor set");
         }
 
+        // @Buffer通常用于绑定到着色器统一缓冲区(Uniform Buffer)或存储缓冲区(Storage Buffer)
+        // Uniform Buffer: 用于存储常量数据，如变换矩阵、光照参数等
+        // Storage Buffer: 用于存储大量数据，如顶点数据、计算结果等
         RHIDescriptorBufferInfo mesh_perframe_storage_buffer_info = {};
         mesh_perframe_storage_buffer_info.offset                 = 0;
         mesh_perframe_storage_buffer_info.range                  = sizeof(MeshPerframeStorageBufferObject);
@@ -1774,6 +1777,9 @@ namespace Piccolo
         assert(mesh_perframe_storage_buffer_info.range <
                m_global_render_resource->_storage_buffer._max_storage_buffer_range);
 
+        // @Image通常用于绑定到着色器的采样器(Sampler)或存储图像(Storage Image)
+        // Sampler: 在着色器中采样纹理数据
+        // Storage Image: 用于存储图像数据，如渲染目标(Render Target)或计算结果
         RHIDescriptorImageInfo specular_texture_image_info = {};
         specular_texture_image_info.sampler     = m_global_render_resource->_ibl_resource._specular_texture_sampler;
         specular_texture_image_info.imageView   = m_global_render_resource->_ibl_resource._specular_texture_image_view;
