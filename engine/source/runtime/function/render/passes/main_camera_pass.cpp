@@ -1965,6 +1965,9 @@ namespace Piccolo
         m_swapchain_framebuffers.resize(m_rhi->getSwapchainInfo().imageViews.size());
 
         // create frame buffer for every imageview
+        // @一个FrameBuffer是包含多个imageview的对象, 这跟OpenGL帧缓冲区对象不同(一个FrameBuffer就是一个图像或者缓冲区)
+        // 与渲染通道(VkRenderPass)一起使用, 作为渲染通道的输出目标
+        // 这跟DescriptorSet不同, DescriptorSet的功能是把资源绑定到着色器阶段, 让着色器访问资源
         for (size_t i = 0; i < m_rhi->getSwapchainInfo().imageViews.size(); i++)
         {
             RHIImageView* framebuffer_attachments_for_image_view[_main_camera_pass_attachment_count] = {
